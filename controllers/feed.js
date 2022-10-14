@@ -1,6 +1,6 @@
-import { validationResult } from "express-validator"
 import Post from '../models/post.js'
-import path from 'path'
+import validation from "./validation.js"
+import errorHandling from './errorHandling.js'
 import fs from 'fs'
 
 
@@ -105,26 +105,6 @@ export const deletePost = ( req, res, next ) => {
 
 const clearImage = filePath => {
   fs.unlink( filePath, err => console.log( err ))
-}
-function validation( req, imageValidation = false ) {
-  const errors = validationResult( req )
-  if ( !errors.isEmpty() ) {
-    const error = new Error('Validation failed, entered data has to be at least 5 character long!')
-    error.statusCode = 422
-    throw error
-  }
-  if ( imageValidation && !req.file ) {
-    const error = new Error( 'No image provided!' )
-    error.statusCode = 422
-    throw error
-  }
-}
-
-function errorHandling( err, next ) {
-  if ( !err.statusCode ) {
-    err.statusCode = 500
-  }
-  next( err )
 }
 
 function ifNoPost() {

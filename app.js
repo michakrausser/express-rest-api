@@ -1,6 +1,7 @@
 import express from 'express'
 import bodyParser from "body-parser";
 import { feedRouter } from './routes/feed.js'
+import { authRouter } from './routes/auth.js'
 import mongoose from 'mongoose'
 import multer from 'multer'
 
@@ -44,11 +45,14 @@ app.use(( req, res, next ) => {
  * using for x-www-form-urlencoded <form>
  */
 app.use( '/feed', feedRouter )
+app.use( '/auth', authRouter )
+
 app.use(( err, req, res, next ) => {
-  console.log( err );
+  console.log( 'err: ', err );
   const status = err.statusCode || 500
   const message = err.message
-  res.status( status ).json({ message })
+  const data = err.data
+  res.status( status ).json({ message, data })
 })
 
 mongoose.connect( 'mongodb+srv://michakrausser:TmxKks4YkzDEpN@feed-api.itmvxv9.mongodb.net/?retryWrites=true&w=majority' )

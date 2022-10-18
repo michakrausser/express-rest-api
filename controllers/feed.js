@@ -5,35 +5,30 @@ import errorHandling from './errorHandling.js'
 import fs from 'fs'
 
 
-export const getPosts = ( req, res, next ) => {
+export const getPosts = async ( req, res, next ) => {
   const currentPage = req.query.page || 1
   const perPage = 2
-  let totalItems
-  Post.find()
-    .countDocuments()
-    .then( count => {
-      totalItems = count
-      return Post.find()
-        .skip(( currentPage - 1 ) * perPage )
-        .limit( perPage )
+  try {
+    const totalItems = await Post.find().countDocuments()
+    const posts = await Post.find()
+      .populate( 'creator' )
+      .skip(( currentPage - 1 ) * perPage )
+      .limit( perPage )
+    res.status( 200 ).json({
+      message: 'Fetched posts successfully.',
+      posts,
+      totalItems
     })
-    .then( posts => {
-      res.status( 200 ).json({
-        message: 'Fetched posts successfully.',
-        posts,
-        totalItems
-      })
-    })
-    .catch( err => errorHandling( err, next ))
-
+  } catch ( err ) {
+    errorHandling( err, next )
+  }
 }
 
-export const createPost = ( req, res, next ) => {
+export const createPost = async ( req, res, next ) => {
   validation( req, true )
   const imageUrl = req.file.path
   const title = req.body.title
   const content = req.body.content
-  let creator
 
   const post = new Post({
     title,
@@ -41,37 +36,34 @@ export const createPost = ( req, res, next ) => {
     content,
     creator: req.userId
   })
-  post
-    .save()
-    .then( result => {
-      return User.findById( req.userId )
+
+  try {
+    await post.save()
+    const user = await User.findById( req.userId )
+    user.posts.push( post )
+    await user.save()
+    res.status( 201 ).json({
+      message: 'Post created successfully',
+      post,
+      creator: { _id: user._id, username: user.username }
     })
-    .then( user => {
-      creator = user
-      user.posts.push( post )
-      return user.save()
-    })
-    .then( result => {
-      res.status( 201 ).json({
-        message: 'Post created successfully',
-        post,
-        creator: { _id: creator._id, username: creator.username }
-      })
-    })
-    .catch( err => errorHandling( err, next ))
+  } catch ( err ) {
+    errorHandling( err, next )
+  }
 }
 
-export const getPost = ( req, res, next ) => {
+export const getPost = async ( req, res, next ) => {
   const postId = req.params.postId
-  Post.findById( postId )
-    .then( post => {
-      if ( !post ) ifNoPost()
-      res.status( 200 ).json({ message: 'Post fetched', post })
-    })
-    .catch( err => errorHandling( err, next ))
+  try {
+    const post = await Post.findById( postId )
+    if ( !post ) ifNoPost()
+    res.status( 200 ).json({ message: 'Post fetched', post })
+  } catch ( err ) {
+    errorHandling( err, next )
+  }
 }
 
-export const updatePost = ( req, res, next ) => {
+export const updatePost = async ( req, res, next ) => {
   const postId = req.params.postId
   validation( req )
   const title = req.body.title
@@ -80,44 +72,44 @@ export const updatePost = ( req, res, next ) => {
   if ( req.file ) {
     imageUrl = req.file.path
   }
-  Post.findById( postId )
-    .then( post => {
-      if ( !post ) ifNoPost()
-      if ( post.creator.toString() !== req.userId ) hasNoPermissions()
-      if ( imageUrl !== post.imageUrl ) {
-        clearImage( post.imageUrl )
-      }
-      post.title = title
-      post.imageUrl = imageUrl
-      post.content = content
-      return post.save()
-    })
-    .then( result => {
-      res.status( 200 ).json({ message: 'Post updated', post: result })
-    })
-    .catch( err => errorHandling( err, next ))
+
+  try {
+    const post = await Post.findById( postId )
+    if ( !post ) ifNoPost()
+    if ( post.creator.toString() !== req.userId ) hasNoPermissions()
+    if ( imageUrl !== post.imageUrl ) clearImage( post.imageUrl )
+    post.title = title
+    post.imageUrl = imageUrl
+    post.content = content
+    await post.save()
+    res.status( 200 ).json({ message: 'Post updated', post })
+  } catch ( err ) {
+    errorHandling( err, next )
+  }
 }
 
-export const deletePost = ( req, res, next ) => {
+export const deletePost = async ( req, res, next ) => {
   const postId = req.params.postId
-  Post.findById( postId )
-    .then( post => {
-      if ( !post ) ifNoPost()
-      if ( post.creator.toString() !== req.userId ) hasNoPermissions()
-      clearImage( post.imageUrl )
-      return Post.findByIdAndRemove( postId )
-    })
-    .then( () => {
-      return User.findById( req.userId )
-    })
-    .then( user => {
-      user.posts.pull( postId )
-      return user.save()
-    })
-    .then( () => {
-      res.status( 200 ).json({ message: 'Deleted post!' })
-    })
-    .catch( err => errorHandling( err, next ))
+  try {
+    const post = await Post.findById( postId )
+    if ( !post ) ifNoPost()
+    if ( post.creator.toString() !== req.userId ) hasNoPermissions()
+
+    // find post under user and delete it
+    await User.findByIdAndUpdate(
+      req.userId,
+      { $pull: { posts: { $in: [ postId ] }}},
+      { new: true }
+    )
+
+    clearImage( post.imageUrl )
+
+    // delete Post from POSTS collection
+    await Post.findByIdAndRemove( postId )
+    res.status( 200 ).json({ message: 'Deleted post!' })
+  } catch( err ) {
+    errorHandling( err, next )
+  }
 }
 
 const clearImage = filePath => {

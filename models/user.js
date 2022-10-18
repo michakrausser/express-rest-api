@@ -22,7 +22,7 @@ export default mongoose.model( 'User', new Schema(
     },
     posts: [
       {
-        type: String,
+        type: Schema.Types.ObjectId,
         required: true
       }
     ]

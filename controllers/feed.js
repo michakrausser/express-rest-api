@@ -1,4 +1,5 @@
 import Post from '../models/post.js'
+import User from '../models/user.js'
 import validation from "./validation.js"
 import errorHandling from './errorHandling.js'
 import fs from 'fs'
@@ -28,23 +29,33 @@ export const getPosts = ( req, res, next ) => {
 }
 
 export const createPost = ( req, res, next ) => {
-  console.log( 'file: ', req.file );
   validation( req, true )
   const imageUrl = req.file.path
   const title = req.body.title
   const content = req.body.content
+  let creator
 
   const post = new Post({
     title,
     imageUrl,
     content,
-    creator: { name: 'Micha' }
+    creator: req.userId
   })
-  post.save()
+  post
+    .save()
+    .then( result => {
+      return User.findById( req.userId )
+    })
+    .then( user => {
+      creator = user
+      user.posts.push( post )
+      return user.save()
+    })
     .then( result => {
       res.status( 201 ).json({
         message: 'Post created successfully',
-        post: result
+        post,
+        creator: { _id: creator._id, username: creator.username }
       })
     })
     .catch( err => errorHandling( err, next ))
@@ -61,7 +72,6 @@ export const getPost = ( req, res, next ) => {
 }
 
 export const updatePost = ( req, res, next ) => {
-  console.log( 'body: ', req.body );
   const postId = req.params.postId
   validation( req )
   const title = req.body.title
@@ -73,6 +83,7 @@ export const updatePost = ( req, res, next ) => {
   Post.findById( postId )
     .then( post => {
       if ( !post ) ifNoPost()
+      if ( post.creator.toString() !== req.userId ) hasNoPermissions()
       if ( imageUrl !== post.imageUrl ) {
         clearImage( post.imageUrl )
       }
@@ -88,16 +99,22 @@ export const updatePost = ( req, res, next ) => {
 }
 
 export const deletePost = ( req, res, next ) => {
-  console.log( 'params: ', req.params );
   const postId = req.params.postId
   Post.findById( postId )
     .then( post => {
-      // Check logged in user
       if ( !post ) ifNoPost()
+      if ( post.creator.toString() !== req.userId ) hasNoPermissions()
       clearImage( post.imageUrl )
       return Post.findByIdAndRemove( postId )
     })
-    .then( result => {
+    .then( () => {
+      return User.findById( req.userId )
+    })
+    .then( user => {
+      user.posts.pull( postId )
+      return user.save()
+    })
+    .then( () => {
       res.status( 200 ).json({ message: 'Deleted post!' })
     })
     .catch( err => errorHandling( err, next ))
@@ -110,6 +127,12 @@ const clearImage = filePath => {
 function ifNoPost() {
   const error = new Error( 'Could not find post.' )
   error.statusCode = 404
+  throw error
+}
+
+function hasNoPermissions() {
+  const error = new Error( 'Not the right permissions!' )
+  error.statusCode = 403
   throw error
 }
 

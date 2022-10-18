@@ -33,3 +33,5 @@ authRouter.put(
   ],
   feedController.signup
 )
+
+authRouter.post( '/login', feedController.login )
